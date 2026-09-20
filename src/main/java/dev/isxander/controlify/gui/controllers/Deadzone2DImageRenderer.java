@@ -6,6 +6,7 @@
  */
 package dev.isxander.controlify.gui.controllers;
 
+import dev.isxander.controlify.controller.input.ControllerStateView;
 import dev.isxander.controlify.controller.input.DeadzoneGroup;
 import dev.isxander.controlify.controller.input.InputComponent;
 import dev.isxander.controlify.utils.render.elements.CircleElementRenderState;
@@ -37,11 +38,14 @@ public class Deadzone2DImageRenderer implements ImageRenderer {
 		int renderHeight = (int) (radius * 2f);
 
 		// axes go up -> down -> left -> right
+		// calibrated, not raw: the deadzone is applied on top of calibration, so previewing the
+		// raw value would draw the point somewhere the deadzone never sees it
+		ControllerStateView state = input.calibratedStateNow();
 		List<Identifier> deadzones = deadzoneGroup.axes();
-		float up = input.rawStateNow().getAxisState(deadzones.get(0));
-		float down = input.rawStateNow().getAxisState(deadzones.get(1));
-		float left = input.rawStateNow().getAxisState(deadzones.get(2));
-		float right = input.rawStateNow().getAxisState(deadzones.get(3));
+		float up = state.getAxisState(deadzones.get(0));
+		float down = state.getAxisState(deadzones.get(1));
+		float left = state.getAxisState(deadzones.get(2));
+		float right = state.getAxisState(deadzones.get(3));
 		float currentX = right - left;
 		float currentY = down - up;
 
