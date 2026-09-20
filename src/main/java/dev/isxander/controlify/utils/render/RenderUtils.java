@@ -6,6 +6,7 @@
  */
 package dev.isxander.controlify.utils.render;
 
+import dev.isxander.controlify.utils.ColorUtils;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.resources.Identifier;
@@ -40,6 +41,21 @@ public final class RenderUtils {
 					x, y,
 					width, 5
 			);
+		}
+	}
+
+	/**
+	 * A flat progress bar in Controlify's accent colour, for screens that want to match the
+	 * calibration wizard rather than the vanilla boss bar.
+	 */
+	public static void extractAccentBar(GuiGraphicsExtractor graphics, int centerX, int y, int width, float progress) {
+		int x = centerX - width / 2;
+		int filled = Mth.lerpDiscrete(Mth.clamp(progress, 0f, 1f), 0, width);
+
+		graphics.fill(x - 1, y - 1, x + width + 1, y + 6, 0xFF1A1420);
+		graphics.fill(x, y, x + width, y + 5, ColorUtils.ACCENT_DIM & 0x60FFFFFF);
+		if (filled > 0) {
+			graphics.fill(x, y, x + filled, y + 5, ColorUtils.ACCENT);
 		}
 	}
 }

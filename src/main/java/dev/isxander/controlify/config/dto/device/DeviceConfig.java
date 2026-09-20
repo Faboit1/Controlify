@@ -19,6 +19,7 @@ public record DeviceConfig(
 	long lastSeen,
 	Identifier controllerType,
 	GyroCalibrationConfig gyroCalibration,
+	AxisCalibrationConfig axisCalibration,
 	Optional<ControllerMapping> mapping
 ) {
 	public static final Codec<DeviceConfig> CODEC = RecordCodecBuilder.create(instance -> instance.group(
@@ -26,6 +27,7 @@ public record DeviceConfig(
 			Codec.LONG.optionalFieldOf("last_seen", 0L).forGetter(DeviceConfig::lastSeen),
 			Identifier.CODEC.optionalFieldOf("controller_type", ControllerType.DEFAULT.namespace()).forGetter(DeviceConfig::controllerType),
 			GyroCalibrationConfig.CODEC.fieldOf("gyro_calibration").forGetter(DeviceConfig::gyroCalibration),
+			AxisCalibrationConfig.CODEC.optionalFieldOf("axis_calibration", AxisCalibrationConfig.EMPTY).forGetter(DeviceConfig::axisCalibration),
 			ControllerMapping.CODEC.optionalFieldOf("mapping").forGetter(DeviceConfig::mapping)
 	).apply(instance, DeviceConfig::new));
 }

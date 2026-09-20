@@ -1,0 +1,158 @@
+name: Auto Build and Release
+
+# Builds every supported Minecraft target and opens a GitHub release with the jars
+# attached, so a merge to main produces a downloadable build without any manual steps.
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.editorconfig'
+      - 'CHANGELOG.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  generate-build-matrix:
+    runs-on: ubuntu-latest
+    name: Generate build matrix
+
+    outputs:
+      matrix: ${{ steps.generate-matrix.outputs.matrix }}
+
+    steps:
+      - uses: actions/checkout@v7
+      - name: Get potential versions
+        id: generate-matrix
+        run: |
+          MATRIX=$(jq -c '{include: (.branches[""] | map({target: ., experimental: (test("exp"))}))}' ./versions/versions.json)
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+
+  build:
+    needs: generate-build-matrix
+    runs-on: ubuntu-latest
+    name: Build ${{ matrix.target }}
+
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.generate-build-matrix.outputs.matrix) }}
+
+    continue-on-error: ${{ matrix.experimental == 'true' }}
+
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          java-version: 25
+          distribution: microsoft
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+      - name: Overwrite current version
+        run: printf "%s" "${{ matrix.target }}" | cut -d':' -f1 | tr -d '\n' > ./versions/current
+
+      - name: Setup stonecutter
+        run: ./gradlew "Refresh active project"
+        env:
+          CI_SINGLE_BUILD: ${{ matrix.target }}
+
+      - name: Build ${{ matrix.target }}
+        run: ./gradlew build --stacktrace
+        env:
+          CI_SINGLE_BUILD: ${{ matrix.target }}
+
+      - name: Collect jars
+        run: |
+          set -euo pipefail
+
+          mkdir -p staging
+          # the universal jar is what gets published to Modrinth and CurseForge: one jar that
+          # loads on both Fabric and NeoForge. The rest are build intermediates.
+          find versions -path '*/build/libs/*-universal.jar' -exec cp {} staging/ \;
+
+          if [ -z "$(ls -A staging)" ]; then
+            echo "::error::No universal jars were produced"
+            exit 1
+          fi
+          ls -l staging
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: jars-${{ matrix.target }}
+          path: staging/*.jar
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    name: Open release
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          java-version: 25
+          distribution: microsoft
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Read project version
+        id: version
+        shell: bash
+        run: |
+          set -o pipefail
+
+          ./gradlew --quiet printVersion \
+            | grep '^CONTROLIFY_VERSION=' \
+            | cut -d= -f2- \
+            | sed 's/^/version=/' >> "$GITHUB_OUTPUT"
+
+      - name: Download jars
+        uses: actions/download-artifact@v7
+        with:
+          pattern: jars-*
+          merge-multiple: true
+          path: release-jars
+
+      - name: Open release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          # the run number keeps the tag unique, so a re-run never collides with an existing tag
+          TAG="v${VERSION}-build.${GITHUB_RUN_NUMBER}"
+
+          ls -l release-jars
+
+          {
+            printf 'Automated build of `%s`.\n\n' "$GITHUB_SHA"
+            printf 'Jars for every supported Minecraft target are attached below.\n'
+          } > release-notes.md
+
+          gh release create "$TAG" release-jars/*.jar \
+            --title "🟣 Controlify ${VERSION} (build ${GITHUB_RUN_NUMBER})" \
+            --notes-file release-notes.md \
+            --generate-notes

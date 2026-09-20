@@ -9,6 +9,7 @@ package dev.isxander.controlify.controller.input;
 import dev.isxander.controlify.Controlify;
 import dev.isxander.controlify.bindings.ControlifyBindApiImpl;
 import dev.isxander.controlify.api.bind.InputBinding;
+import dev.isxander.controlify.config.settings.device.AxisCalibrationSettings;
 import dev.isxander.controlify.config.settings.device.DeviceSettings;
 import dev.isxander.controlify.config.settings.profile.InputSettings;
 import dev.isxander.controlify.controller.*;
@@ -31,6 +32,9 @@ public class InputComponent extends ECSComponentImpl {
 	private ControllerState
 			stateNow = ControllerState.EMPTY,
 			stateThen = ControllerState.EMPTY;
+	private CalibratedControllerStateView
+			calibratedStateNow,
+			calibratedStateThen;
 	private DeadzoneControllerStateView
 			deadzoneStateNow,
 			deadzoneStateThen;
@@ -70,6 +74,14 @@ public class InputComponent extends ECSComponentImpl {
 	}
 	public ControllerStateView stateThen() {
 		return this.deadzoneStateThen;
+	}
+
+	/**
+	 * The controller's state with calibration applied but no deadzone, i.e. what the deadzone is
+	 * actually measured against.
+	 */
+	public ControllerStateView calibratedStateNow() {
+		return this.calibratedStateNow;
 	}
 
 	public ControllerState rawStateNow() {
@@ -158,6 +170,14 @@ public class InputComponent extends ECSComponentImpl {
 		return controller();
 	}
 
+	/**
+	 * This device's measured axis calibration. Falls back to an empty calibration while the
+	 * component is still being constructed, before its device settings have been looked up.
+	 */
+	public AxisCalibrationSettings calibration() {
+		return this.deviceSettings == null ? AxisCalibrationSettings.NONE : this.deviceSettings.axisCalibration;
+	}
+
 	public InputSettings settings() {
 		return this.controller().settings().input;
 	}
@@ -172,8 +192,10 @@ public class InputComponent extends ECSComponentImpl {
 	}
 
 	private void updateDeadzoneView() {
-		this.deadzoneStateNow = new DeadzoneControllerStateView(this.stateNow, this);
-		this.deadzoneStateThen = new DeadzoneControllerStateView(this.stateThen, this);
+		this.calibratedStateNow = new CalibratedControllerStateView(this.stateNow, this);
+		this.calibratedStateThen = new CalibratedControllerStateView(this.stateThen, this);
+		this.deadzoneStateNow = new DeadzoneControllerStateView(this.calibratedStateNow, this);
+		this.deadzoneStateThen = new DeadzoneControllerStateView(this.calibratedStateThen, this);
 	}
 
 	Optional<Identifier> getDeadzoneForAxis(Identifier axis) {

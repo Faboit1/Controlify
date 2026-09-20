@@ -18,6 +18,16 @@ Button guides and DualSense adaptive trigger effects are now powered by a shared
 - Allow mods to contribute state to the built-in domains, register custom domains, and create their own button-guide or trigger-effect instances
 - Replace the old guide and adaptive-trigger APIs and resource formats with the contextual API and `contextual` resource paths
 
+### Controller calibration
+
+Controlify can now measure your controller instead of asking you to guess at a deadzone slider. A guided wizard watches the sticks while you leave the controller alone, then while you roll each stick and pull each trigger, and stores the result against the device rather than the profile.
+
+- Add a calibration wizard that measures resting drift, stick travel, and trigger travel
+- Correct every axis reading for its measured resting offset, so a drifting stick reads as centred
+- Rescale each axis onto its measured travel, so a worn stick that no longer reaches its extreme still gives full-strength input
+- Recommend a deadzone per stick from the jitter that remains after calibration, and offer to apply it
+- Let calibration be toggled off or cleared per controller without re-running the wizard
+
 ### Other changes
 
 - Update SDL to 3.4.14 and refresh the bundled controller mappings

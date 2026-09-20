@@ -14,6 +14,7 @@ import dev.isxander.controlify.api.bind.InputBinding;
 import dev.isxander.controlify.api.bind.InputBindingSupplier;
 import dev.isxander.controlify.bindings.input.EmptyInput;
 import dev.isxander.controlify.bindings.input.Input;
+import dev.isxander.controlify.config.settings.device.AxisCalibrationSettings;
 import dev.isxander.controlify.config.settings.device.DeviceSettings;
 import dev.isxander.controlify.config.settings.profile.ProfileSettings;
 import dev.isxander.controlify.config.settings.profile.GenericControllerSettings;
@@ -33,11 +34,13 @@ import dev.isxander.controlify.rumble.RumbleSource;
 import dev.isxander.controlify.rumble.RumbleState;
 import dev.isxander.controlify.server.ServerPolicies;
 import dev.isxander.controlify.utils.CUtil;
+import dev.isxander.controlify.utils.ColorUtils;
 import dev.isxander.controlify.utils.MinecraftUtil;
 import dev.isxander.yacl3.api.*;
 import dev.isxander.yacl3.api.controller.*;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
 import net.minecraft.util.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
@@ -57,7 +60,11 @@ public class ControllerConfigScreenFactory {
 	private static final Component newOptionLabel = Component.translatable("controlify.gui.new_options.label").withStyle(ChatFormatting.GOLD);
 	private static final ValueFormatter<Integer> ticksToMillisFormatter = v -> Component.literal(String.format("%03dms", v * 50));
 
+	private static final Style accentStyle = Style.EMPTY.withColor(ColorUtils.ACCENT_RGB);
+
 	private final List<Option<?>> newOptions = new ArrayList<>();
+	/** Populated by {@link #makeDeadzoneGroup}, so calibration can write through the open screen. */
+	private final Map<Identifier, Option<Float>> deadzoneOptions = new LinkedHashMap<>();
 
 	public static Screen generateConfigScreen(
 			Screen parent,
@@ -108,6 +115,7 @@ public class ControllerConfigScreenFactory {
 		var controlsGroup = makeControlsGroup(settings, defaults, controller);
 		var accessibilityGroup = makeAccessibilityGroup(settings, defaults, controller);
 		var deadzoneGroup = makeDeadzoneGroup(settings, defaults, controller);
+		var calibrationGroup = makeCalibrationGroup(settings, controller); // after deadzones, which it writes to
 
 		GenericControllerSettings genSettings = settings.generic;
 		GenericControllerSettings genDefaults = defaults.generic;
@@ -126,6 +134,7 @@ public class ControllerConfigScreenFactory {
 		sensitivityGroup.ifPresent(builder::group);
 		controlsGroup.ifPresent(builder::group);
 		accessibilityGroup.ifPresent(builder::group);
+		calibrationGroup.ifPresent(builder::group);
 		deadzoneGroup.ifPresent(builder::group);
 
 		return builder.build();
@@ -412,6 +421,64 @@ public class ControllerConfigScreenFactory {
 				.build());
 	}
 
+	private Optional<OptionGroup> makeCalibrationGroup(
+			ProfileSettings settings,
+			Optional<ControllerEntity> controller
+	) {
+		Optional<InputComponent> inputOpt = controller.flatMap(ControllerEntity::input);
+		if (inputOpt.isEmpty())
+			return Optional.empty();
+
+		InputComponent input = inputOpt.get();
+		AxisCalibrationSettings calibration = Controlify.instance().config().getSettings()
+				.getOrCreateDeviceSettings(controller.get().uid())
+				.axisCalibration;
+
+		Component status = calibration.isCalibrated()
+				? Component.translatable("controlify.gui.calibration.status.calibrated", calibration.axes().size()).withStyle(accentStyle)
+				: Component.translatable("controlify.gui.calibration.status.uncalibrated").withStyle(ChatFormatting.GRAY);
+
+		Option<Boolean> enabledOption = Option.<Boolean>createBuilder()
+				.name(accent(Component.translatable("controlify.gui.calibration.enabled")))
+				.description(OptionDescription.of(Component.translatable("controlify.gui.calibration.enabled.tooltip")))
+				.binding(true, () -> calibration.enabled, v -> calibration.enabled = v)
+				.available(calibration.isCalibrated())
+				.controller(TickBoxControllerBuilder::create)
+				.build();
+
+		return Optional.of(OptionGroup.createBuilder()
+				.name(accent(Component.translatable("controlify.gui.group.calibration")))
+				.description(OptionDescription.of(Component.translatable("controlify.gui.group.calibration.tooltip")))
+				.option(LabelOption.create(status))
+				.option(ButtonOption.createBuilder()
+						.name(accent(Component.translatable("controlify.gui.calibration.start")))
+						.description(OptionDescription.of(Component.translatable("controlify.gui.calibration.start.tooltip")))
+						.action((screen, button) -> MinecraftUtil.setScreen(new ControllerCalibrationScreen(
+								input,
+								screen,
+								(groupName, deadzone) -> {
+									Option<Float> option = deadzoneOptions.get(groupName);
+									if (option != null) {
+										option.requestSet(deadzone);
+									} else {
+										settings.input.sensitivity.putDeadzone(groupName, deadzone);
+									}
+								}
+						)))
+						.build())
+				.option(enabledOption)
+				.option(ButtonOption.createBuilder()
+						.name(accent(Component.translatable("controlify.gui.calibration.clear")))
+						.description(OptionDescription.of(Component.translatable("controlify.gui.calibration.clear.tooltip")))
+						.action((screen, button) -> {
+							calibration.clear();
+							enabledOption.setAvailable(false);
+							Controlify.instance().config().saveSafely();
+						})
+						.build())
+				.build());
+	}
+
 	private Optional<OptionGroup> makeDeadzoneGroup(
 			ProfileSettings settings,
 			ProfileSettings defaults,
@@ -455,6 +522,7 @@ public class ControllerConfigScreenFactory {
 			deadzoneRef.set(deadzoneOpt);
 			group.option(deadzoneOpt);
 			deadzoneOpts.add(deadzoneOpt);
+			deadzoneOptions.put(groupName, deadzoneOpt);
 		}
 
 		group.option(Option.<Float>createBuilder()
@@ -876,6 +944,11 @@ public class ControllerConfigScreenFactory {
 
 	private static Identifier screenshot(String filename) {
 		return CUtil.rl("textures/screenshots/" + filename);
+	}
+
+	/** Tints a label with Controlify's calibration accent, so added settings read as a set. */
+	private static MutableComponent accent(Component component) {
+		return component.copy().withStyle(accentStyle);
 	}
 
 	private static MutableComponent notSupportedText(Component featureName) {

@@ -19,6 +19,7 @@ public class DeviceSettings {
 	public long lastSeen;
 	public Identifier controllerType;
 	public final GyroCalibrationSettings gyroCalibration;
+	public final AxisCalibrationSettings axisCalibration;
 	public @Nullable ControllerMapping mapping;
 
 	private DeviceSettings(String uid) {
@@ -26,6 +27,7 @@ public class DeviceSettings {
 		this.lastSeen = 0L;
 		this.controllerType = ControllerType.DEFAULT.namespace();
 		this.gyroCalibration = GyroCalibrationSettings.defaults();
+		this.axisCalibration = AxisCalibrationSettings.defaults();
 		this.mapping = null;
 	}
 
@@ -34,12 +36,14 @@ public class DeviceSettings {
 			long lastSeen,
 			Identifier controllerType,
 			GyroCalibrationSettings gyroCalibration,
+			AxisCalibrationSettings axisCalibration,
 			@Nullable ControllerMapping mapping
 	) {
 		this.name = name;
 		this.lastSeen = lastSeen;
 		this.controllerType = controllerType;
 		this.gyroCalibration = gyroCalibration;
+		this.axisCalibration = axisCalibration;
 		this.mapping = mapping;
 	}
 
@@ -53,6 +57,7 @@ public class DeviceSettings {
 				dto.lastSeen(),
 				dto.controllerType(),
 				GyroCalibrationSettings.fromDTO(dto.gyroCalibration()),
+				AxisCalibrationSettings.fromDTO(dto.axisCalibration()),
 				dto.mapping().orElse(null)
 		);
 	}
@@ -63,6 +68,7 @@ public class DeviceSettings {
 				lastSeen,
 				controllerType,
 				gyroCalibration.toDTO(),
+				axisCalibration.toDTO(),
 				Optional.ofNullable(mapping)
 		);
 	}
